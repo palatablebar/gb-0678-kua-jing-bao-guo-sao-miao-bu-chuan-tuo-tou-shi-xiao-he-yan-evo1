@@ -13,6 +13,7 @@
 | M5 时效计算 | 查看并运行时效计算 | `/api/timeliness` | `app/modules/m5_timeliness/rules.py` | `tests/test_m5.py` |
 | M6 赔付对账 | 查看并运行赔付对账 | `/api/compensation` | `app/modules/m6_compensation/rules.py` | `tests/test_m6.py` |
 | M7 批次归档 | 查看并运行批次归档 | `/api/archives` | `app/modules/m7_archives/rules.py` | `tests/test_m7.py` |
+| M8 清理裁决 | 生成切换清单、幂等执行、登记补传再争议 | `/api/cleanup` | `app/modules/m8_cleanup/rules.py`、`app/store.py` | `tests/test_m8.py` |
 
 ## 陷阱登记
 
@@ -32,10 +33,19 @@
 | TRAP-12 | DST自然日 | 固定24小时 | 按当地午夜切片 | `app/modules/m5_timeliness/rules.py` | `tests/test_m5.py::test_dst_actual_elapsed_hours` |
 | TRAP-13 | 迟到妥投补传 | 按上传时间赔付 | 发生时间重建 | `app/modules/m4_paths/rules.py` | `tests/test_m4.py::test_late_upload_event_time_decides` |
 | TRAP-23 | 假日端点 | 误算全天 | 当地日半开切段 | `app/modules/m5_timeliness/rules.py` | `tests/test_m5.py::test_holiday_full_day_stops` |
+| TRAP-27 | 整批清理误删争议票 | 按批一刀切 | 批次为执行单元、逐票冻结；切换前安全检查拒绝含争议释放项的清单 | `app/store.py` | `tests/test_m8.py::test_unsafe_switch_rolls_back` |
+| TRAP-28 | 清单切换中途失败 | 旧清单已停用新清单未生效 | 停用旧版与启用新版同事务，失败整体回滚 | `app/store.py` | `tests/test_m8.py::test_raising_switch_rolls_back` |
+| TRAP-29 | 清理重试重复释放 | 重复计数、结论漂移 | 释放主键去重+结论首次落库，重试原样返回 | `app/store.py` | `tests/test_m8.py::test_execute_retry_no_double_release_same_conclusion` |
+| TRAP-30 | 补传再争议状态混乱 | 已释放票被当作可恢复 | 三态分离：已释放不回退、继续保留记依据、待确认执行跳过 | `app/store.py` | `tests/test_m8.py::test_redispute_three_states_visible` |
+| TRAP-31 | 多份生效清单 | 并发各执一份 | 部分唯一索引保证每批至多一份生效清单 | `app/store.py` | `tests/test_m8.py::test_single_active_list_per_batch` |
 
 ## 对账规则
 
 输入原始逻辑行=最终采纳来源行+隔离来源行+重复行+空白行+分段表头。派生记录用_sources保存完整来源，因此分组不丢行。业务预期合计与上游申报合计之差等于逐行差异之和。结果按输入摘要、规则版本及参数产生唯一批次，事务写入；同源重跑只复用已有批次。
+
+## 清理规则
+
+清理裁决结论：批次为执行单元（每批至多一份生效清单、统一到期执行），逐票为冻结单元。冻结信号：赔付差异未结（逐票）、复核未结（批次级）、补传再争议（逐票事件）。清单每票带裁决（释放/保留）、证据状态（待确认/继续保留/已释放）与保留依据。切换在单事务内完成，失败回滚旧版；执行只释放未争议的待确认票，结论首次执行即落库，重试不重复释放、不改变结论；已释放票在任何后续清单版本中保持已释放。
 
 ## 已知不覆盖
 

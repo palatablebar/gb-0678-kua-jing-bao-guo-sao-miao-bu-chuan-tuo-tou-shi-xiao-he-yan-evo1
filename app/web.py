@@ -5,6 +5,8 @@ from app import store
 def register_pages(app):
     def page(index):
         run=store.latest() or execute(load_sample("dirty.csv"))
+        if MODULES[index][0]=="cleanup":
+            return render_template("m8.html",title=TITLE,short=SHORT,modules=MODULES,index=index,run=run,cleanup=store.cleanup_view(run["run_id"]),history=store.history())
         stage=run["stages"][index]
         rows=stage["rows"]
         columns=[['scan_id', 'parcel', 'node', 'event_time', 'received_time'], ['scan_id', 'parcel', 'node', 'destination', 'zone'], ['scan_id', 'parcel', 'event_utc', 'received_utc', 'upload_lag_hours'], ['parcel', 'accepted_at', 'delivered_at', 'delivery_uploaded_at', 'scan_count', 'path'], ['parcel', 'accepted_at', 'delivered_at', 'working_hours', 'promised_hours', 'late_hours', 'expected', 'sla'], ['parcel', 'expected', 'reported', 'difference', 'status'], ['parcel', 'delivered_at', 'sla', 'expected', 'status']][index]
